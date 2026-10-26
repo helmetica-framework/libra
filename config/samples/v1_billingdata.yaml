@@ -1,0 +1,5 @@
+apiVersion: libra.helmetica.io/v1
+kind: BillingData
+metadata:
+  name: sample
+spec: {}

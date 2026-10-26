@@ -1,0 +1,6 @@
+resources:
+- bases/libra.helmetica.io_billingdata.yaml
+#+kubebuilder:scaffold:crdkustomizeresource
+
+configurations:
+- kustomizeconfig.yaml
