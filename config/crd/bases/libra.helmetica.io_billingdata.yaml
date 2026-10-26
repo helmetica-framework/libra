@@ -15,6 +15,9 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .status.claimName
+      name: Claim
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
@@ -24,7 +27,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: BillingData is libra's placeholder resource.
+        description: BillingData holds what one instance is billed for.
         properties:
           apiVersion:
             description: |-
@@ -46,12 +49,45 @@ spec:
           spec:
             description: BillingDataSpec describes the billing data to collect.
             properties:
+              items:
+                items:
+                  description: BillingItem is one billable quantity.
+                  properties:
+                    name:
+                      minLength: 1
+                      type: string
+                    value:
+                      description: Value is a Kubernetes quantity, kept exactly as
+                        written.
+                      maxLength: 64
+                      type: string
+                      x-kubernetes-validations:
+                      - message: value must be a quantity, like 3, 0.5 or 10Gi
+                        rule: isQuantity(self)
+                  required:
+                  - name
+                  - value
+                  type: object
+                maxItems: 64
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              metadata:
+                additionalProperties:
+                  type: string
+                description: Metadata applies to every item.
+                type: object
               suspend:
                 description: Suspend stops reconciliation while true.
                 type: boolean
             type: object
           status:
             properties:
+              claimName:
+                type: string
+              claimNamespace:
+                type: string
               message:
                 description: Message explains a Failed phase.
                 type: string

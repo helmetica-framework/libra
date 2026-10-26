@@ -13,7 +13,9 @@ type BillingDataStatusApplyConfiguration struct {
 	// ObservedGeneration is the spec generation the phase was computed from.
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Message explains a Failed phase.
-	Message *string `json:"message,omitempty"`
+	Message        *string `json:"message,omitempty"`
+	ClaimNamespace *string `json:"claimNamespace,omitempty"`
+	ClaimName      *string `json:"claimName,omitempty"`
 }
 
 // BillingDataStatusApplyConfiguration constructs a declarative configuration of the BillingDataStatus type for use with
@@ -43,5 +45,21 @@ func (b *BillingDataStatusApplyConfiguration) WithObservedGeneration(value int64
 // If called multiple times, the Message field is set to the value of the last call.
 func (b *BillingDataStatusApplyConfiguration) WithMessage(value string) *BillingDataStatusApplyConfiguration {
 	b.Message = &value
+	return b
+}
+
+// WithClaimNamespace sets the ClaimNamespace field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ClaimNamespace field is set to the value of the last call.
+func (b *BillingDataStatusApplyConfiguration) WithClaimNamespace(value string) *BillingDataStatusApplyConfiguration {
+	b.ClaimNamespace = &value
+	return b
+}
+
+// WithClaimName sets the ClaimName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ClaimName field is set to the value of the last call.
+func (b *BillingDataStatusApplyConfiguration) WithClaimName(value string) *BillingDataStatusApplyConfiguration {
+	b.ClaimName = &value
 	return b
 }

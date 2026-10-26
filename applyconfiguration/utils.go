@@ -22,6 +22,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1.BillingDataSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("BillingDataStatus"):
 		return &apiv1.BillingDataStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("BillingItem"):
+		return &apiv1.BillingItemApplyConfiguration{}
 
 	}
 	return nil

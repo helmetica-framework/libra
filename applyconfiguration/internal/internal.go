@@ -46,12 +46,31 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.helmetica-framework.libra.api.v1.BillingDataSpec
   map:
     fields:
+    - name: items
+      type:
+        list:
+          elementType:
+            namedType: com.github.helmetica-framework.libra.api.v1.BillingItem
+          elementRelationship: associative
+          keys:
+          - name
+    - name: metadata
+      type:
+        map:
+          elementType:
+            scalar: string
     - name: suspend
       type:
         scalar: boolean
 - name: com.github.helmetica-framework.libra.api.v1.BillingDataStatus
   map:
     fields:
+    - name: claimName
+      type:
+        scalar: string
+    - name: claimNamespace
+      type:
+        scalar: string
     - name: message
       type:
         scalar: string
@@ -61,6 +80,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: phase
       type:
         namedType: com.github.helmetica-framework.libra.api.v1.BillingDataPhase
+- name: com.github.helmetica-framework.libra.api.v1.BillingItem
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: value
+      type:
+        scalar: string
 - name: io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1
   map:
     elementType:
