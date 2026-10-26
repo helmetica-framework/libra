@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -154,6 +155,7 @@ func runController(cmd *cobra.Command, _ []string) error {
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorder("billingdata-controller"),
 		Log:      mgr.GetLogger().WithName("billingdata-controller"),
+		Now:      time.Now,
 	}
 
 	if err := bm.SetupWithManager("billingdata", mgr); err != nil {
