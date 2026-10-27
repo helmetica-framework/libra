@@ -2,11 +2,13 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -83,42 +85,130 @@ func (r *BillingDataManager) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, fmt.Errorf("getting namespace: %w", err)
 	}
 
-	want := desiredState(bd, ns, r.Now())
+	// The API server keeps whole seconds, so a retry reads back the same time.
+	now := r.Now().UTC().Truncate(time.Second)
+	want := desiredState(bd, ns, now)
 
-	var claimNamespace, claimName string
+	st := billingv1.BillingDataStatus{
+		Phase:              want.Phase,
+		ObservedGeneration: bd.Generation,
+		Message:            want.Message,
+		PendingReport:      bd.Status.PendingReport.DeepCopy(),
+		LastReport:         bd.Status.LastReport.DeepCopy(),
+	}
 	if want.Claim != nil {
-		claimNamespace, claimName = want.Claim.Namespace, want.Claim.Name
+		st.ClaimNamespace, st.ClaimName = want.Claim.Namespace, want.Claim.Name
 	}
 
-	if bd.Status.Phase == want.Phase &&
-		bd.Status.ObservedGeneration == bd.Generation &&
-		bd.Status.Message == want.Message &&
-		bd.Status.ClaimName == claimName &&
-		bd.Status.ClaimNamespace == claimNamespace {
-		return ctrl.Result{}, nil
+	if want.Phase == billingv1.BillingDataPhaseReady {
+		if err := r.writeReport(ctx, bd, want, now, &st); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
-	if bd.Status.Phase != want.Phase {
-		log.Info("billing data phase changed", "from", bd.Status.Phase, "to", want.Phase)
+	return ctrl.Result{}, r.applyStatus(ctx, bd, st)
+}
+
+// writeReport writes the record of a Ready pass to S3 and updates st to
+// match. On a write error st is Failed and the error is returned.
+func (r *BillingDataManager) writeReport(ctx context.Context, bd *billingv1.BillingData, want state, now time.Time, st *billingv1.BillingDataStatus) error {
+	rep, isNew := nextReport(bd, *want.Claim, now)
+	if rep == nil {
+		return nil
 	}
 
-	st := billingacv1.BillingDataStatus().
-		WithPhase(want.Phase).
-		WithObservedGeneration(bd.Generation).
-		WithMessage(want.Message)
+	if isNew {
+		st.PendingReport = rep
 
-	if want.Claim != nil {
-		st.WithClaimNamespace(claimNamespace).WithClaimName(claimName)
+		err := r.applyStatus(ctx, bd, *st)
+		if err != nil {
+			return fmt.Errorf("writing pending record to status: %w", err)
+		}
+	}
+
+	rec := *want.Record
+	rec.ObservedAt = rep.ObservedAt.Time
+
+	event := eventObserved
+	if st.LastReport == nil {
+		event = eventCreated
+	}
+
+	body, err := encodeRecord(rec, event)
+	if err != nil {
+		return fmt.Errorf("encoding record for %s/%s: %w", bd.GetNamespace(), bd.GetName(), err)
+	}
+
+	err = r.Writer.Put(ctx, rep.Key, body)
+	if err != nil {
+		errMsg := fmt.Errorf("writing record: %w", err)
+
+		st.Phase = billingv1.BillingDataPhaseFailed
+		st.Message = errMsg.Error()
+
+		err := r.applyStatus(ctx, bd, *st)
+		if err != nil {
+			return errors.Join(errMsg, err)
+		}
+
+		return errMsg
+	}
+
+	st.LastReport = rep
+	st.PendingReport = nil
+
+	return nil
+}
+
+// applyStatus writes st unless bd already has it.
+func (r *BillingDataManager) applyStatus(ctx context.Context, bd *billingv1.BillingData, st billingv1.BillingDataStatus) error {
+	if equality.Semantic.DeepEqual(bd.Status, st) {
+		return nil
+	}
+
+	if bd.Status.Phase != st.Phase {
+		r.Log.Info("billing data phase changed",
+			"billingdata", client.ObjectKeyFromObject(bd), "from", bd.Status.Phase, "to", st.Phase)
+	}
+
+	ac := billingacv1.BillingDataStatus().
+		WithPhase(st.Phase).
+		WithObservedGeneration(st.ObservedGeneration).
+		WithMessage(st.Message)
+
+	if st.ClaimNamespace != "" || st.ClaimName != "" {
+		ac.WithClaimNamespace(st.ClaimNamespace).WithClaimName(st.ClaimName)
+	}
+	if st.PendingReport != nil {
+		ac.WithPendingReport(reportAC(st.PendingReport))
+	}
+	if st.LastReport != nil {
+		ac.WithLastReport(reportAC(st.LastReport))
 	}
 
 	status := billingacv1.BillingData(bd.GetName(), bd.GetNamespace()).
-		WithStatus(st)
+		WithStatus(ac)
 
 	if err := r.Status().Apply(ctx, status, fieldOwner, client.ForceOwnership); err != nil {
-		return ctrl.Result{}, fmt.Errorf("applying billing data status: %w", err)
+		return fmt.Errorf("applying billing data status: %w", err)
 	}
 
-	return ctrl.Result{}, nil
+	bd.Status = st
+
+	return nil
+}
+
+func reportAC(rep *billingv1.Report) *billingacv1.ReportApplyConfiguration {
+	return billingacv1.Report().
+		WithKey(rep.Key).
+		WithGeneration(rep.Generation).
+		WithObservedAt(rep.ObservedAt).
+		WithClaim(billingacv1.ClaimReference().
+			WithAPIVersion(rep.Claim.APIVersion).
+			WithKind(rep.Claim.Kind).
+			WithNamespace(rep.Claim.Namespace).
+			WithName(rep.Claim.Name).
+			WithUID(rep.Claim.UID))
 }
 
 // desiredState decides phase, message, claim and record for one pass.
