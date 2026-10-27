@@ -8,19 +8,19 @@ import (
 
 // SourceRef names the BillingData a record came from.
 type SourceRef struct {
-	Namespace  string
-	Name       string
-	UID        string
-	Generation int64
+	Namespace  string `json:"namespace"`
+	Name       string `json:"name"`
+	UID        string `json:"uid"`
+	Generation int64  `json:"generation"`
 }
 
 // Record is one observation of a BillingData.
 type Record struct {
-	Claim      ClaimRef
-	Source     SourceRef
-	Metadata   map[string]string
-	Items      []billingv1.BillingItem
-	ObservedAt time.Time
+	Claim      ClaimRef                `json:"claim"`
+	Source     SourceRef               `json:"source"`
+	Metadata   map[string]string       `json:"metadata"`
+	Items      []billingv1.BillingItem `json:"items"`
+	ObservedAt time.Time               `json:"observedAt"`
 }
 
 // buildRecord turns bd into the record the S3 writer sends.
