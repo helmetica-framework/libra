@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -27,7 +28,10 @@ import (
 	//+kubebuilder:scaffold:imports
 	billingv1 "github.com/helmetica-framework/libra/api/v1"
 	"github.com/helmetica-framework/libra/controllers"
+	"github.com/helmetica-framework/libra/s3"
 )
+
+var _ controllers.RecordWriter = (*s3.Writer)(nil)
 
 var (
 	metricsAddr          string
@@ -57,6 +61,12 @@ func init() {
 	}
 	controllerCmd.Flags().String("controller-namespace", defaultNamespace, "The namespace the controller runs in.")
 
+	// Credentials are not flags; s3.New reads AWS_ACCESS_KEY_ID and
+	// AWS_SECRET_ACCESS_KEY.
+	controllerCmd.Flags().String("s3-endpoint", os.Getenv("S3_ENDPOINT"),
+		"Endpoint URL of the S3 server, like https://s3.example.com. Defaults to $S3_ENDPOINT.")
+	controllerCmd.Flags().String("s3-bucket", os.Getenv("S3_BUCKET"),
+		"Bucket the billing records go to. It must exist. Defaults to $S3_BUCKET.")
 	controllerCmd.Flags().Bool("metrics-secure", true, "If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	controllerCmd.Flags().String("metrics-cert-path", "", "The directory that contains the metrics server certificate.")
 	controllerCmd.Flags().String("metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
@@ -86,8 +96,18 @@ func runController(cmd *cobra.Command, _ []string) error {
 	metricsCertName, mcnerr := cmd.Flags().GetString("metrics-cert-name")
 	metricsCertKey, mckerr := cmd.Flags().GetString("metrics-cert-key")
 
-	if err := multierr.Combine(cnerr, mcperr, mcnerr, mckerr, smerr); err != nil {
+	s3Endpoint, s3eerr := cmd.Flags().GetString("s3-endpoint")
+	s3Bucket, s3berr := cmd.Flags().GetString("s3-bucket")
+
+	if err := multierr.Combine(cnerr, mcperr, mcnerr, mckerr, smerr, s3eerr, s3berr); err != nil {
 		return fmt.Errorf("getting flags: %w", err)
+	}
+
+	if s3Endpoint == "" {
+		return errors.New("--s3-endpoint (or $S3_ENDPOINT) is not set")
+	}
+	if s3Bucket == "" {
+		return errors.New("--s3-bucket (or $S3_BUCKET) is not set")
 	}
 
 	cmd.Println(
@@ -150,12 +170,18 @@ func runController(cmd *cobra.Command, _ []string) error {
 
 	lifetimeCtx := cmd.Context()
 
+	writer, err := s3.New(lifetimeCtx, s3Endpoint, s3Bucket)
+	if err != nil {
+		return fmt.Errorf("setting up s3 writer: %w", err)
+	}
+
 	bm := controllers.BillingDataManager{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorder("billingdata-controller"),
 		Log:      mgr.GetLogger().WithName("billingdata-controller"),
 		Now:      time.Now,
+		Writer:   writer,
 	}
 
 	if err := bm.SetupWithManager("billingdata", mgr); err != nil {

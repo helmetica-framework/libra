@@ -28,6 +28,11 @@ const (
 
 var fieldOwner = client.FieldOwner("libra:billingdata")
 
+// RecordWriter stores one billing record.
+type RecordWriter interface {
+	Put(ctx context.Context, key string, body []byte) error
+}
+
 // BillingDataManager reconciles BillingData objects.
 type BillingDataManager struct {
 	client.Client
@@ -35,7 +40,8 @@ type BillingDataManager struct {
 	Recorder events.EventRecorder
 	Log      logr.Logger
 	// Now is the clock records are stamped with.
-	Now func() time.Time
+	Now    func() time.Time
+	Writer RecordWriter
 }
 
 // state is everything one pass decided.
