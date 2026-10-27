@@ -40,6 +40,23 @@ type BillingDataSpec struct {
 	Items []BillingItem `json:"items,omitempty"`
 }
 
+// ClaimReference names the claim a BillingData bills for.
+type ClaimReference struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Namespace  string `json:"namespace"`
+	Name       string `json:"name"`
+	UID        string `json:"uid"`
+}
+
+// Report is one record libra chose to write to S3.
+type Report struct {
+	Key        string         `json:"key"`
+	Generation int64          `json:"generation"`
+	ObservedAt metav1.Time    `json:"observedAt"`
+	Claim      ClaimReference `json:"claim"`
+}
+
 type BillingDataStatus struct {
 	// +optional
 	Phase BillingDataPhase `json:"phase,omitempty"`
@@ -54,6 +71,12 @@ type BillingDataStatus struct {
 	ClaimNamespace string `json:"claimNamespace,omitempty"`
 	// +optional
 	ClaimName string `json:"claimName,omitempty"`
+
+	// PendingReport is saved before the write, so a retry reuses its key.
+	// +optional
+	PendingReport *Report `json:"pendingReport,omitempty"`
+	// +optional
+	LastReport *Report `json:"lastReport,omitempty"`
 }
 
 // BillingData holds what one instance is billed for.

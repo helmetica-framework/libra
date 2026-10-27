@@ -82,3 +82,17 @@ func TestCRD_ItemsHaveMaxItems(t *testing.T) {
 	require.NotNil(t, items.MaxItems, "the CEL rule on each item needs a bounded list for the cost budget")
 	assert.Equal(t, int64(64), *items.MaxItems)
 }
+
+func TestCRD_StatusHasReports(t *testing.T) {
+	crd := loadCRD(t)
+
+	status := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["status"]
+	for _, field := range []string{"pendingReport", "lastReport"} {
+		report, ok := status.Properties[field]
+		require.True(t, ok, "status.%s missing", field)
+
+		for _, sub := range []string{"key", "generation", "observedAt", "claim"} {
+			assert.Contains(t, report.Properties, sub, "status.%s.%s missing", field, sub)
+		}
+	}
+}

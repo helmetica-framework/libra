@@ -71,12 +71,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: claimNamespace
       type:
         scalar: string
+    - name: lastReport
+      type:
+        namedType: com.github.helmetica-framework.libra.api.v1.Report
     - name: message
       type:
         scalar: string
     - name: observedGeneration
       type:
         scalar: numeric
+    - name: pendingReport
+      type:
+        namedType: com.github.helmetica-framework.libra.api.v1.Report
     - name: phase
       type:
         namedType: com.github.helmetica-framework.libra.api.v1.BillingDataPhase
@@ -89,6 +95,39 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: value
       type:
         scalar: string
+- name: com.github.helmetica-framework.libra.api.v1.ClaimReference
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: namespace
+      type:
+        scalar: string
+    - name: uid
+      type:
+        scalar: string
+- name: com.github.helmetica-framework.libra.api.v1.Report
+  map:
+    fields:
+    - name: claim
+      type:
+        namedType: com.github.helmetica-framework.libra.api.v1.ClaimReference
+    - name: generation
+      type:
+        scalar: numeric
+    - name: key
+      type:
+        scalar: string
+    - name: observedAt
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
 - name: io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1
   map:
     elementType:

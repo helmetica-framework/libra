@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+
+	billingv1 "github.com/helmetica-framework/libra/api/v1"
 )
 
 const (
@@ -16,13 +18,7 @@ const (
 )
 
 // ClaimRef names the claim a BillingData bills for.
-type ClaimRef struct {
-	APIVersion string
-	Kind       string
-	Namespace  string
-	Name       string
-	UID        string
-}
+type ClaimRef = billingv1.ClaimReference
 
 // claimFromNamespace reads the claim chrysopoeia stamped on ns.
 func claimFromNamespace(ns *corev1.Namespace) (ClaimRef, error) {

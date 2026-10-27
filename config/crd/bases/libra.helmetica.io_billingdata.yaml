@@ -88,6 +88,44 @@ spec:
                 type: string
               claimNamespace:
                 type: string
+              lastReport:
+                description: Report is one record libra chose to write to S3.
+                properties:
+                  claim:
+                    description: ClaimReference names the claim a BillingData bills
+                      for.
+                    properties:
+                      apiVersion:
+                        type: string
+                      kind:
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      uid:
+                        type: string
+                    required:
+                    - apiVersion
+                    - kind
+                    - name
+                    - namespace
+                    - uid
+                    type: object
+                  generation:
+                    format: int64
+                    type: integer
+                  key:
+                    type: string
+                  observedAt:
+                    format: date-time
+                    type: string
+                required:
+                - claim
+                - generation
+                - key
+                - observedAt
+                type: object
               message:
                 description: Message explains a Failed phase.
                 type: string
@@ -96,6 +134,45 @@ spec:
                   computed from.
                 format: int64
                 type: integer
+              pendingReport:
+                description: PendingReport is saved before the write, so a retry reuses
+                  its key.
+                properties:
+                  claim:
+                    description: ClaimReference names the claim a BillingData bills
+                      for.
+                    properties:
+                      apiVersion:
+                        type: string
+                      kind:
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      uid:
+                        type: string
+                    required:
+                    - apiVersion
+                    - kind
+                    - name
+                    - namespace
+                    - uid
+                    type: object
+                  generation:
+                    format: int64
+                    type: integer
+                  key:
+                    type: string
+                  observedAt:
+                    format: date-time
+                    type: string
+                required:
+                - claim
+                - generation
+                - key
+                - observedAt
+                type: object
               phase:
                 type: string
             type: object
