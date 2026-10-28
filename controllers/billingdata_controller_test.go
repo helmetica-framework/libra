@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -456,4 +459,187 @@ func TestReconcile_WriteAndStatusFailBothReported(t *testing.T) {
 
 	require.ErrorContains(t, err, "bucket down")
 	assert.ErrorContains(t, err, "api down")
+}
+
+func deleteBillingData(t *testing.T, c client.Client, name, namespace string) *billingv1.BillingData {
+	t.Helper()
+
+	require.NoError(t, c.Delete(context.Background(), getBillingData(t, c, name, namespace)))
+	bd := getBillingData(t, c, name, namespace)
+	require.NotNil(t, bd.DeletionTimestamp)
+
+	return bd
+}
+
+func requireGone(t *testing.T, c client.Client, name, namespace string) {
+	t.Helper()
+
+	err := c.Get(context.Background(),
+		types.NamespacedName{Name: name, Namespace: namespace}, &billingv1.BillingData{})
+	require.True(t, apierrors.IsNotFound(err), "expected NotFound, got %v", err)
+}
+
+func decodeDoc(t *testing.T, raw []byte) recordDoc {
+	t.Helper()
+
+	doc := recordDoc{}
+	require.NoError(t, json.Unmarshal(raw, &doc))
+
+	return doc
+}
+
+func TestReconcile_AddsFinalizer(t *testing.T) {
+	for name, tc := range map[string]struct {
+		ns      *corev1.Namespace
+		suspend bool
+	}{
+		"ready":     {ns: annotatedNamespace("instance")},
+		"failed":    {ns: plainNamespace("instance")},
+		"suspended": {ns: annotatedNamespace("instance"), suspend: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bd := billingData("sample", "instance")
+			bd.Spec.Suspend = ptr.To(tc.suspend)
+			m, c := newManager(t, tc.ns, bd)
+
+			reconcileOnce(t, m, "sample", "instance")
+
+			assert.Contains(t, getBillingData(t, c, "sample", "instance").Finalizers, reportFinalizer)
+		})
+	}
+}
+
+func TestReconcile_DeletionWritesDeletedRecord(t *testing.T) {
+	m, c := newManager(t, annotatedNamespace("instance"), billingData("sample", "instance"))
+	reconcileOnce(t, m, "sample", "instance")
+
+	bd := deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	key := deletedKey(bd.DeletionTimestamp.Time, "sample-uid")
+	w := writerOf(m)
+	require.Contains(t, w.objects, key)
+
+	doc := decodeDoc(t, w.objects[key])
+	assert.Equal(t, eventDeleted, doc.Event)
+	assert.Equal(t, testClaim, doc.Claim)
+	assert.True(t, doc.ObservedAt.Equal(bd.DeletionTimestamp.Time))
+	assert.Equal(t, []billingv1.BillingItem{{Name: "replicas", Value: "3"}}, doc.Items)
+	assert.Equal(t, eventCreated, decodeDoc(t, w.objects[sampleKey]).Event,
+		"the created record must stay")
+
+	requireGone(t, c, "sample", "instance")
+}
+
+func TestReconcile_DeletionUsesSavedClaim(t *testing.T) {
+	m, c := newManager(t, annotatedNamespace("instance"), billingData("sample", "instance"))
+	reconcileOnce(t, m, "sample", "instance")
+
+	ns := &corev1.Namespace{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: "instance"}, ns))
+	ns.Annotations = nil
+	require.NoError(t, c.Update(context.Background(), ns))
+
+	bd := deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	doc := decodeDoc(t, writerOf(m).objects[deletedKey(bd.DeletionTimestamp.Time, "sample-uid")])
+	assert.Equal(t, testClaim, doc.Claim)
+	requireGone(t, c, "sample", "instance")
+}
+
+func TestReconcile_DeletionWithOnlyPendingStillReports(t *testing.T) {
+	m, c := newManager(t, annotatedNamespace("instance"), billingData("sample", "instance"))
+	w := writerOf(m)
+	w.err = errors.New("bucket down")
+	require.Error(t, reconcileErr(m, "sample", "instance"))
+	w.err = nil
+
+	bd := deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	assert.Contains(t, w.objects, deletedKey(bd.DeletionTimestamp.Time, "sample-uid"))
+	requireGone(t, c, "sample", "instance")
+}
+
+func TestReconcile_DeletionWithoutReportWritesNothing(t *testing.T) {
+	m, c := newManager(t, plainNamespace("instance"), billingData("sample", "instance"))
+	reconcileOnce(t, m, "sample", "instance")
+
+	deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	assert.Empty(t, writerOf(m).puts)
+	requireGone(t, c, "sample", "instance")
+}
+
+func TestReconcile_DeletionWriteErrorKeepsFinalizer(t *testing.T) {
+	m, c := newManager(t, annotatedNamespace("instance"), billingData("sample", "instance"))
+	reconcileOnce(t, m, "sample", "instance")
+
+	deleteBillingData(t, c, "sample", "instance")
+	w := writerOf(m)
+	w.err = errors.New("bucket down")
+
+	require.Error(t, reconcileErr(m, "sample", "instance"))
+
+	bd := getBillingData(t, c, "sample", "instance")
+	assert.Contains(t, bd.Finalizers, reportFinalizer)
+	assert.Equal(t, billingv1.BillingDataPhaseFailed, bd.Status.Phase)
+	assert.Contains(t, bd.Status.Message, "bucket down")
+	assert.NotNil(t, bd.Status.LastReport, "reports must survive the failed pass")
+
+	w.err = nil
+	reconcileOnce(t, m, "sample", "instance")
+	requireGone(t, c, "sample", "instance")
+}
+
+func TestReconcile_DeletionWhileSuspendedStillReports(t *testing.T) {
+	m, c := newManager(t, annotatedNamespace("instance"), billingData("sample", "instance"))
+	reconcileOnce(t, m, "sample", "instance")
+
+	bd := getBillingData(t, c, "sample", "instance")
+	bd.Spec.Suspend = ptr.To(true)
+	require.NoError(t, c.Update(context.Background(), bd))
+
+	bd = deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	assert.Contains(t, writerOf(m).objects, deletedKey(bd.DeletionTimestamp.Time, "sample-uid"))
+	requireGone(t, c, "sample", "instance")
+}
+
+func TestReconcile_DeletionWithoutOurFinalizerDoesNothing(t *testing.T) {
+	bd := billingData("sample", "instance")
+	bd.Finalizers = []string{"example.io/keep"}
+	m, c := newManager(t, annotatedNamespace("instance"), bd)
+
+	deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	assert.Empty(t, writerOf(m).puts)
+	got := getBillingData(t, c, "sample", "instance")
+	assert.True(t, slices.Equal([]string{"example.io/keep"}, got.Finalizers))
+}
+
+func TestReconcile_DeletionPrefersLastReportClaim(t *testing.T) {
+	pendingClaim := testClaim
+	pendingClaim.UID = "pending-claim-uid"
+
+	bd := billingData("sample", "instance")
+	bd.Finalizers = []string{reportFinalizer}
+	bd.Status.LastReport = &billingv1.Report{
+		Key: sampleKey, Generation: 2, ObservedAt: metav1.NewTime(fixedNow), Claim: testClaim,
+	}
+	bd.Status.PendingReport = &billingv1.Report{
+		Key: "pending", Generation: 3, ObservedAt: metav1.NewTime(fixedNow), Claim: pendingClaim,
+	}
+	m, c := newManager(t, annotatedNamespace("instance"), bd)
+
+	deleted := deleteBillingData(t, c, "sample", "instance")
+	reconcileOnce(t, m, "sample", "instance")
+
+	doc := decodeDoc(t, writerOf(m).objects[deletedKey(deleted.DeletionTimestamp.Time, "sample-uid")])
+	assert.Equal(t, testClaim, doc.Claim)
+	requireGone(t, c, "sample", "instance")
 }

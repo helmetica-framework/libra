@@ -16,6 +16,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -26,6 +27,7 @@ import (
 const (
 	readyMessage     = "billing data ready"
 	suspendedMessage = "reconciliation suspended"
+	reportFinalizer  = "libra.helmetica.io/report-deletion"
 )
 
 var fieldOwner = client.FieldOwner("libra:billingdata")
@@ -75,12 +77,17 @@ func (r *BillingDataManager) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	if !bd.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.finalize(ctx, bd)
+	}
+
+	err := r.ensureFinalizer(ctx, bd)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("ensuring finalizer: %w", err)
 	}
 
 	ns := &corev1.Namespace{}
 
-	err := r.Get(ctx, client.ObjectKey{Name: bd.GetNamespace()}, ns)
+	err = r.Get(ctx, client.ObjectKey{Name: bd.GetNamespace()}, ns)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("getting namespace: %w", err)
 	}
@@ -209,6 +216,70 @@ func reportAC(rep *billingv1.Report) *billingacv1.ReportApplyConfiguration {
 			WithNamespace(rep.Claim.Namespace).
 			WithName(rep.Claim.Name).
 			WithUID(rep.Claim.UID))
+}
+
+// ensureFinalizer adds reportFinalizer if it is not there yet.
+func (r *BillingDataManager) ensureFinalizer(ctx context.Context, bd *billingv1.BillingData) error {
+	if controllerutil.ContainsFinalizer(bd, reportFinalizer) {
+		return nil
+	}
+
+	patch := client.MergeFromWithOptions(bd.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	controllerutil.AddFinalizer(bd, reportFinalizer)
+
+	err := r.Patch(ctx, bd, patch)
+	if err != nil {
+		return fmt.Errorf("adding finalizer: %w", err)
+	}
+
+	return nil
+}
+
+// finalize writes the deleted record, then lets the object go.
+func (r *BillingDataManager) finalize(ctx context.Context, bd *billingv1.BillingData) error {
+	if !controllerutil.ContainsFinalizer(bd, reportFinalizer) {
+		return nil
+	}
+
+	rep := bd.Status.LastReport
+	if rep == nil {
+		rep = bd.Status.PendingReport
+	}
+
+	if rep != nil {
+		at := bd.DeletionTimestamp.Time
+		rec := buildRecord(bd, rep.Claim, at)
+		body, err := encodeRecord(rec, eventDeleted)
+		if err != nil {
+			return fmt.Errorf("encoding deleted record: %w", err)
+		}
+
+		err = r.Writer.Put(ctx, deletedKey(at, string(bd.UID)), body)
+		if err != nil {
+			st := bd.Status.DeepCopy()
+			errMsg := fmt.Errorf("writing deleted record: %w", err)
+
+			st.Phase = billingv1.BillingDataPhaseFailed
+			st.Message = errMsg.Error()
+
+			err := r.applyStatus(ctx, bd, *st)
+			if err != nil {
+				return errors.Join(errMsg, err)
+			}
+
+			return errMsg
+		}
+	}
+
+	patch := client.MergeFromWithOptions(bd.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	controllerutil.RemoveFinalizer(bd, reportFinalizer)
+
+	err := r.Patch(ctx, bd, patch)
+	if err != nil {
+		return fmt.Errorf("removing finalizer: %w", err)
+	}
+
+	return nil
 }
 
 // desiredState decides phase, message, claim and record for one pass.
