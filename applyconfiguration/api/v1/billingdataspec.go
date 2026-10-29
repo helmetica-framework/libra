@@ -9,6 +9,9 @@ package v1
 type BillingDataSpecApplyConfiguration struct {
 	// Suspend stops reconciliation while true.
 	Suspend *bool `json:"suspend,omitempty"`
+	// Metadata applies to every item.
+	Metadata map[string]string               `json:"metadata,omitempty"`
+	Items    []BillingItemApplyConfiguration `json:"items,omitempty"`
 }
 
 // BillingDataSpecApplyConfiguration constructs a declarative configuration of the BillingDataSpec type for use with
@@ -22,5 +25,32 @@ func BillingDataSpec() *BillingDataSpecApplyConfiguration {
 // If called multiple times, the Suspend field is set to the value of the last call.
 func (b *BillingDataSpecApplyConfiguration) WithSuspend(value bool) *BillingDataSpecApplyConfiguration {
 	b.Suspend = &value
+	return b
+}
+
+// WithMetadata puts the entries into the Metadata field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the Metadata field,
+// overwriting an existing map entries in Metadata field with the same key.
+func (b *BillingDataSpecApplyConfiguration) WithMetadata(entries map[string]string) *BillingDataSpecApplyConfiguration {
+	if b.Metadata == nil && len(entries) > 0 {
+		b.Metadata = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.Metadata[k] = v
+	}
+	return b
+}
+
+// WithItems adds the given value to the Items field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Items field.
+func (b *BillingDataSpecApplyConfiguration) WithItems(values ...*BillingItemApplyConfiguration) *BillingDataSpecApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithItems")
+		}
+		b.Items = append(b.Items, *values[i])
+	}
 	return b
 }

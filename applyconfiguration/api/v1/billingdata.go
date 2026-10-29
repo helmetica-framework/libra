@@ -14,7 +14,7 @@ import (
 // BillingDataApplyConfiguration represents a declarative configuration of the BillingData type for use
 // with apply.
 //
-// BillingData is libra's placeholder resource.
+// BillingData holds what one instance is billed for.
 type BillingDataApplyConfiguration struct {
 	metav1.TypeMetaApplyConfiguration    `json:",inline"`
 	*metav1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

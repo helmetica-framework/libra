@@ -2,4 +2,11 @@ apiVersion: libra.helmetica.io/v1
 kind: BillingData
 metadata:
   name: sample
-spec: {}
+spec:
+  metadata:
+    sla: besteffort
+  items:
+    - name: replicas
+      value: "1"
+    - name: storage
+      value: 10Gi
