@@ -16,7 +16,7 @@ import (
 //
 // BillingData holds what one instance is billed for.
 type BillingDataApplyConfiguration struct {
-	metav1.TypeMetaApplyConfiguration    `json:",inline"`
+	metav1.TypeMetaApplyConfiguration    `json:""`
 	*metav1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	Spec                                 *BillingDataSpecApplyConfiguration   `json:"spec,omitempty"`
 	Status                               *BillingDataStatusApplyConfiguration `json:"status,omitempty"`
