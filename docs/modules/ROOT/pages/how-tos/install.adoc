@@ -1,0 +1,55 @@
+= Install and try it
+
+Against a kind (or any) cluster, with a local minio for the bucket:
+
+[source,bash]
+----
+kubectl apply -k config/crd
+just run
+kubectl annotate namespace default \
+  chrysopoeia.io/claim-apiVersion=example.io/v1 \
+  chrysopoeia.io/claim-kind=Redis \
+  chrysopoeia.io/claim-namespace=tenant \
+  chrysopoeia.io/claim-name=my-redis \
+  chrysopoeia.io/claim-uid=example-uid
+kubectl apply -k config/samples
+kubectl get billingdata -w   # PHASE -> Ready
+----
+
+The annotations stand in for chrysopoeia, which sets them on every instance
+namespace. The sample creates a `BillingData` named `sample` with two items,
+and the controller sets its phase to `Ready` with the claim it found:
+
+[source,console]
+----
+NAME     CLAIM      PHASE   MESSAGE
+sample   my-redis   Ready   billing data ready
+----
+
+The record is now in the bucket:
+
+[source,bash]
+----
+docker exec minio mc ls --recursive local/billing
+----
+
+*`config/default` deploys RBAC and the manager, but not the CRDs.* Install
+the CRDs separately from `config/crd` first:
+
+[source,bash]
+----
+kubectl apply -k config/crd
+kubectl apply -k config/default
+----
+
+The manager reads its S3 settings from the secret `libra-s3`. Create it before
+the manager starts:
+
+[source,bash]
+----
+kubectl create secret generic libra-s3 -n <libra namespace> \
+  --from-literal=S3_ENDPOINT=https://s3.example.com \
+  --from-literal=S3_BUCKET=billing \
+  --from-literal=AWS_ACCESS_KEY_ID=... \
+  --from-literal=AWS_SECRET_ACCESS_KEY=...
+----

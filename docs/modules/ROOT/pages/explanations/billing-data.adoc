@@ -1,0 +1,84 @@
+= Declaring what is billed
+
+[source,yaml]
+----
+apiVersion: libra.helmetica.io/v1
+kind: BillingData
+metadata:
+  name: sample
+spec:
+  metadata:
+    sla: besteffort
+  items:
+    - name: replicas
+      value: "1"
+    - name: storage
+      value: 10Gi
+----
+
+An empty spec is valid: it builds a record with no items.
+
+[cols="1,1,1",options="header"]
+|===
+|Field |Default |Meaning
+
+|`metadata`
+|none
+|Free text that applies to every item, such as the SLA.
+
+|`items`
+|none
+|At most 64 entries.
+
+|`items[].name`
+|required
+|What is billed. Each name may appear once.
+
+|`items[].value`
+|required
+|How much, as a Kubernetes quantity: `3`, `0.5` or `10Gi`. Anything else is rejected when it is applied, so a typo fails at `helm install`.
+
+|`suspend`
+|`false`
+|Holds the object at `Pending` and builds no record. Effectively disabling billing for this `BillingData`.
+|===
+
+The result is reported back on the object:
+
+[cols="1,1",options="header"]
+|===
+|Status field |Meaning
+
+|`phase`
+|`Ready`, `Pending` while suspended, `Failed` when the claim is unknown or the S3 write failed.
+
+|`message`
+|What happened. For `Failed`, which annotations are missing or the S3 error.
+
+|`claimNamespace`, `claimName`
+|The claim the record is billed to.
+
+|`pendingReport`
+|The record libra is about to write. A retry uses the same key.
+
+|`lastReport`
+|The last record written to S3.
+|===
+
+== Where the BillingData comes from
+
+The service chart renders it from its own values, so the chart author decides
+what is billable and the values are final before they reach the cluster.
+Making them easier to trace and debug.
+
+== Where the claim comes from
+
+*Libra never reads the claim.* Chrysopoeia provides annotations to every instance namespace
+with the claim it belongs to, and libra reads it from there:
+
+`chrysopoeia.io/claim-apiVersion`, `claim-kind`, `claim-namespace`,
+`claim-name`, `claim-uid`.
+
+If one is missing or empty, the `BillingData` goes `Failed` and the message
+names the missing ones. Libra watches namespaces, so it turns `Ready` on its
+own once the annotations appear.

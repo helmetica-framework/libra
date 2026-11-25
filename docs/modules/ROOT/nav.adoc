@@ -1,0 +1,15 @@
+* xref:index.adoc[Overview]
+
+.Explanations
+* xref:explanations/billing-data.adoc[Declaring what is billed]
+* xref:explanations/records.adoc[Records in S3]
+* xref:explanations/architecture.adoc[Design notes]
+* xref:explanations/code-structure.adoc[Code structure]
+
+.How-tos
+* xref:how-tos/install.adoc[Install and try it]
+* xref:how-tos/uninstall.adoc[Uninstall]
+* xref:how-tos/develop.adoc[how-tos/develop.adoc]
+
+.References
+* xref:references/configuration.adoc[Configuration]

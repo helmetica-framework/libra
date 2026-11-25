@@ -1,0 +1,12 @@
+= Libra
+
+*Libra*: the alchemist's scales, used to weigh each ingredient before the
+work begins.
+
+Libra collects what the services of the https://github.com/helmetica-framework[helmetica]
+framework are billed for. A service declares its billable amounts in a
+`BillingData` next to it, and libra turns each one into a billing record tied
+to the claim that ordered the service. Libra writes the records to an S3
+bucket.
+
+Libra only collects. Prices, invoices and the ERP are somebody else's job.

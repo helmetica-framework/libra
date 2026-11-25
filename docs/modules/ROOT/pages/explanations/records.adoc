@@ -1,0 +1,35 @@
+= Records in S3
+
+Libra writes one JSON object for each new generation or new claim. A pass with
+no change writes nothing. The first object of a `BillingData` is `created`,
+later ones are `observed`.
+
+[cols="1,1",options="header"]
+|===
+|Event |Key
+
+|`created`, `observed`
+|`YYYY/MM/DD/THHMMSSZ_<uid>_<generation>.json`
+
+|`deleted`
+|`YYYY/MM/DD/THHMMSSZ_<uid>_deleted.json`
+|===
+
+Times are UTC, so keys sort by time. The body:
+
+[source,json]
+----
+{
+  "version": 1,
+  "event": "observed",
+  "observedAt": "2026-10-26T12:00:00Z",
+  "claim": {"apiVersion": "example.io/v1", "kind": "Redis", "namespace": "tenant", "name": "my-redis", "uid": "claim-uid"},
+  "source": {"namespace": "instance", "name": "sample", "uid": "bd-uid", "generation": 4},
+  "metadata": {"sla": "guaranteed"},
+  "items": [{"name": "replicas", "value": "3"}]
+}
+----
+
+Libra puts the finalizer `libra.helmetica.io/report-deletion` on every
+`BillingData`. On delete it writes the `deleted` record, then removes the
+finalizer. If nothing was reported before, it writes nothing.

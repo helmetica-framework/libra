@@ -1,0 +1,18 @@
+= Configuration
+
+[cols="1,1,1",options="header"]
+|===
+|Flag |Env var |Meaning
+
+|`--s3-endpoint`
+|`S3_ENDPOINT`
+|S3 server URL with `http://` or `https://`. Required.
+
+|`--s3-bucket`
+|`S3_BUCKET`
+|Bucket for the records. Required. It must exist, or libra does not start.
+
+|none
+|`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+|S3 credentials.
+|===

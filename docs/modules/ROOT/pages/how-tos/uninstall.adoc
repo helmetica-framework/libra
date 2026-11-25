@@ -1,0 +1,10 @@
+= Uninstall
+
+Remove the service charts before libra. If libra goes first, their
+`BillingData` objects keep the finalizer and never go away. To fix that by
+hand:
+
+[source,bash]
+----
+kubectl patch billingdata <name> -n <namespace> --type=merge -p '{"metadata":{"finalizers":null}}'
+----
