@@ -1,0 +1,5 @@
+= Design notes
+
+*Values are passed on exactly as written.* Libra checks that a value is a
+quantity but never converts it, so `1.5Gi` stays `1.5Gi` and does not become
+`1536Mi`. Unit conversion belongs to whatever reads the records.

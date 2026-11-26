@@ -1,0 +1,21 @@
+= Code structure
+
+[cols="1,1",options="header"]
+|===
+|Path |What's there
+
+|`api/v1`
+|The `BillingData` type (`libra.helmetica.io/v1`): spec, status, the quantity check and generated deepcopy code.
+
+|`cmd`
+|The `libra` CLI (cobra): `root.go` wires the binary, `controller.go` is the `libra controller` subcommand that builds the manager and registers `BillingDataManager`.
+
+|`controllers`
+|`BillingDataManager`, the reconciler for `BillingData`. `desiredState` decides each pass; `claim.go` reads the namespace annotations, `record.go` builds the record and `report.go` picks the S3 key and body.
+
+|`s3`
+|The minio-based writer that puts records into the bucket.
+
+|`config`
+|Kustomize tree: `crd` (the CRD manifests, installed separately), `rbac`, `manager`, `default` (RBAC + manager, no CRDs) and `samples`.
+|===
